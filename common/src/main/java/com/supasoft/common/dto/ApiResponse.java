@@ -62,5 +62,15 @@ public class ApiResponse<T> {
                 .timestamp(LocalDateTime.now())
                 .build();
     }
+    
+    public static <T> ApiResponse<T> created(String message, T data) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .message(message)
+                .data(data)
+                .statusCode(201)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
 }
 
