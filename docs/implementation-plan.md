@@ -52,7 +52,7 @@ api/
 ## 2. PROJECT STRUCTURE (Maven Multi-Module)
 
 ### 2.1 Root POM Structure
-```xml
+```
 api/
 │
 ├── pom.xml (Parent POM - Dependency Management)

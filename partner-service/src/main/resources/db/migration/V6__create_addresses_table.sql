@@ -1,0 +1,26 @@
+-- Create addresses table
+CREATE TABLE addresses (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    customer_id BIGINT,
+    supplier_id BIGINT,
+    address_type VARCHAR(20) NOT NULL,
+    street VARCHAR(200) NOT NULL,
+    city VARCHAR(100),
+    state VARCHAR(100),
+    country VARCHAR(100),
+    postal_code VARCHAR(20),
+    is_default BOOLEAN DEFAULT FALSE,
+    notes TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    version BIGINT,
+    INDEX idx_address_customer (customer_id),
+    INDEX idx_address_supplier (supplier_id),
+    INDEX idx_address_type (address_type),
+    INDEX idx_address_default (is_default),
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

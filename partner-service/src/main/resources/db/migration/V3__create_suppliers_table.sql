@@ -1,0 +1,30 @@
+-- Create suppliers table
+CREATE TABLE suppliers (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(200) NOT NULL,
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    mobile VARCHAR(20),
+    tax_id VARCHAR(50),
+    payment_terms VARCHAR(20) DEFAULT 'NET30',
+    lead_time_days INT DEFAULT 0,
+    rating DECIMAL(2,1) DEFAULT 0.0,
+    total_purchases DECIMAL(19,2) DEFAULT 0.00,
+    total_orders INT DEFAULT 0,
+    registration_date DATE,
+    last_purchase_date DATE,
+    notes TEXT,
+    is_preferred BOOLEAN DEFAULT FALSE,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100),
+    INDEX idx_supplier_code (code),
+    INDEX idx_supplier_email (email),
+    INDEX idx_supplier_phone (phone),
+    INDEX idx_supplier_rating (rating),
+    INDEX idx_supplier_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

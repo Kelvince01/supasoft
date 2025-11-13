@@ -17,6 +17,8 @@ CREATE TABLE price_history (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted BOOLEAN DEFAULT FALSE,
+#     created_by VARCHAR(100),
+#     updated_by VARCHAR(100),
     PRIMARY KEY (id),
     INDEX idx_price_history_item (item_id),
     INDEX idx_price_history_price_type (price_type_id),

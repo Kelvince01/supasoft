@@ -37,6 +37,7 @@
         <module>auth-service</module>
         <module>item-service</module>
         <module>pricing-service</module>
+        <module>partner-service</module>
         <module>stock-service</module>
         <module>sales-service</module>
         <module>purchase-service</module>
