@@ -1,0 +1,30 @@
+-- Create item_prices table
+CREATE TABLE item_prices (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    item_id BIGINT NOT NULL,
+    price_type_id BIGINT NOT NULL,
+    selling_price DECIMAL(19,2) NOT NULL,
+    cost_price DECIMAL(19,2) NOT NULL,
+    profit_margin DECIMAL(10,2),
+    profit_amount DECIMAL(19,2),
+    min_price DECIMAL(19,2),
+    max_price DECIMAL(19,2),
+    effective_date TIMESTAMP NULL,
+    expiry_date TIMESTAMP NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    is_taxable BOOLEAN DEFAULT TRUE,
+    tax_rate DECIMAL(5,2) DEFAULT 0.00,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by VARCHAR(100),
+    updated_by VARCHAR(100),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    PRIMARY KEY (id),
+    INDEX idx_item_price_item (item_id),
+    INDEX idx_item_price_type (price_type_id),
+    INDEX idx_item_price_dates (effective_date, expiry_date),
+    INDEX idx_item_price_status (status),
+    UNIQUE KEY uk_item_price_type (item_id, price_type_id),
+    FOREIGN KEY (price_type_id) REFERENCES price_types(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

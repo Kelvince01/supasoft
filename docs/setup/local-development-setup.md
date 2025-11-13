@@ -593,13 +593,13 @@ Each service has its own Swagger UI:
 
 ```bash
 # Import Postman collection
-# File location: postman/Supermarket-API.postman_collection.json
+# File location: postman/API.postman_collection.json
 
 # Steps:
 1. Open Postman
 2. Click Import
 3. Select File
-4. Choose: postman/Supermarket-API.postman_collection.json
+4. Choose: postman/API.postman_collection.json
 5. Collection imported successfully
 ```
 
