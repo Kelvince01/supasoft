@@ -1,0 +1,87 @@
+MIT License
+
+Copyright (c) 2025 Supasoft - Supermarket Management System
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+
+ADDITIONAL TERMS AND CONDITIONS FOR COMMERCIAL USE:
+
+This software is designed for supermarket and retail management operations in
+the Kenyan market. While the MIT License allows commercial use, we encourage
+businesses using this software to:
+
+1. Comply with all Kenyan regulatory requirements including:
+   - Kenya Revenue Authority (KRA) eTIMS integration
+   - Tax Invoice Management System (TIMS) compliance
+   - VAT regulations and reporting
+   - Data protection regulations
+
+2. Ensure proper data security and customer privacy protection.
+
+3. Maintain appropriate backup and disaster recovery procedures.
+
+4. Provide attribution to the Supasoft project in documentation or about pages
+   (optional but appreciated).
+
+5. Consider contributing improvements back to the community.
+
+================================================================================
+
+THIRD-PARTY LICENSES:
+
+This software uses various third-party libraries and frameworks, each with
+their own licenses. Key dependencies include:
+
+- Spring Boot and Spring Framework (Apache License 2.0)
+- Hibernate ORM (GNU Lesser General Public License 2.1)
+- MySQL Connector/J (GPL with FOSS exception)
+- Redis (BSD License)
+- RabbitMQ (Mozilla Public License)
+- JWT libraries (Apache License 2.0)
+- Lombok (MIT License)
+- MapStruct (Apache License 2.0)
+- Apache POI (Apache License 2.0)
+- iText (AGPL License)
+
+For a complete list of dependencies and their licenses, refer to the
+dependecies-guide.md file in the docs folder.
+
+================================================================================
+
+DISCLAIMER:
+
+This software is provided as-is for educational and commercial purposes.
+While we strive for accuracy and reliability, users are responsible for:
+
+- Testing thoroughly before production deployment
+- Ensuring compliance with local laws and regulations
+- Implementing appropriate security measures
+- Maintaining regular backups
+- Verifying all financial calculations and reports
+
+The authors and contributors are not liable for any financial losses,
+data loss, or regulatory penalties resulting from the use of this software.
+
+For questions or commercial support inquiries, please contact:
+support@supasoft.com
+
+================================================================================
+

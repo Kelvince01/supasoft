@@ -1,0 +1,628 @@
+version: '3.8'
+
+# ============================================================================
+# Supasoft Production Docker Compose Configuration
+# ============================================================================
+# Description: Production-ready Docker Compose setup for Supasoft
+# Usage: docker-compose -f docker-compose-prod.yml up -d
+# Warning: Review and update all passwords and secrets before deployment!
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # DATABASE - MySQL 8.0 (Primary)
+  # ==========================================================================
+  mysql-primary:
+    image: mysql:8.0
+    container_name: supasoft-mysql-primary
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: supasoft_db
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Africa/Nairobi
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=500
+      --innodb_buffer_pool_size=2G
+      --innodb_log_file_size=512M
+      --slow_query_log=1
+      --slow_query_log_file=/var/log/mysql/slow-query.log
+      --long_query_time=2
+      --log_bin=mysql-bin
+      --server_id=1
+      --binlog_format=ROW
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_primary_data:/var/lib/mysql
+      - mysql_primary_logs:/var/log/mysql
+      - ./backups/mysql:/backups
+    networks:
+      - supasoft-backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      timeout: 20s
+      retries: 10
+      interval: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==========================================================================
+  # DATABASE - MySQL 8.0 (Read Replica)
+  # ==========================================================================
+  mysql-replica:
+    image: mysql:8.0
+    container_name: supasoft-mysql-replica
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Africa/Nairobi
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max_connections=500
+      --innodb_buffer_pool_size=2G
+      --server_id=2
+      --read_only=1
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_replica_data:/var/lib/mysql
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      interval: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==========================================================================
+  # CACHE - Redis 7.x (Primary)
+  # ==========================================================================
+  redis-primary:
+    image: redis:7-alpine
+    container_name: supasoft-redis-primary
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 4gb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_primary_data:/data
+    networks:
+      - supasoft-backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ==========================================================================
+  # MESSAGE BROKER - RabbitMQ 3.x
+  # ==========================================================================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: supasoft-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 1024MiB
+      RABBITMQ_DISK_FREE_LIMIT: 2GB
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_logs:/var/log/rabbitmq
+    networks:
+      - supasoft-backend
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==========================================================================
+  # SERVICE DISCOVERY - Eureka Server
+  # ==========================================================================
+  discovery:
+    image: ${DOCKER_REGISTRY}/supasoft/discovery:${VERSION:-latest}
+    container_name: supasoft-discovery
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8761
+      EUREKA_INSTANCE_HOSTNAME: discovery
+    ports:
+      - "8761:8761"
+    networks:
+      - supasoft-backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==========================================================================
+  # API GATEWAY
+  # ==========================================================================
+  api-gateway:
+    image: ${DOCKER_REGISTRY}/supasoft/api-gateway:${VERSION:-latest}
+    container_name: supasoft-api-gateway
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "8080:8080"
+    networks:
+      - supasoft-backend
+      - supasoft-frontend
+    depends_on:
+      - discovery
+      - redis-primary
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==========================================================================
+  # CORE SERVICES
+  # ==========================================================================
+
+  auth-service:
+    image: ${DOCKER_REGISTRY}/supasoft/auth-service:${VERSION:-latest}
+    container_name: supasoft-auth-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_auth?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: 86400000
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - redis-primary
+      - discovery
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  item-service:
+    image: ${DOCKER_REGISTRY}/supasoft/item-service:${VERSION:-latest}
+    container_name: supasoft-item-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_items?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - redis-primary
+      - rabbitmq
+      - discovery
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  pricing-service:
+    image: ${DOCKER_REGISTRY}/supasoft/pricing-service:${VERSION:-latest}
+    container_name: supasoft-pricing-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8083
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_pricing?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - redis-primary
+      - rabbitmq
+      - discovery
+    deploy:
+      replicas: 2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  stock-service:
+    image: ${DOCKER_REGISTRY}/supasoft/stock-service:${VERSION:-latest}
+    container_name: supasoft-stock-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8084
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_stock?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - redis-primary
+      - rabbitmq
+      - discovery
+    deploy:
+      replicas: 2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  sales-service:
+    image: ${DOCKER_REGISTRY}/supasoft/sales-service:${VERSION:-latest}
+    container_name: supasoft-sales-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8085
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_sales?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - redis-primary
+      - rabbitmq
+      - discovery
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 1500M
+        reservations:
+          memory: 768M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  purchase-service:
+    image: ${DOCKER_REGISTRY}/supasoft/purchase-service:${VERSION:-latest}
+    container_name: supasoft-purchase-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8086
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_purchase?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - rabbitmq
+      - discovery
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  transfer-service:
+    image: ${DOCKER_REGISTRY}/supasoft/transfer-service:${VERSION:-latest}
+    container_name: supasoft-transfer-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8087
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_transfer?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - rabbitmq
+      - discovery
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  reports-service:
+    image: ${DOCKER_REGISTRY}/supasoft/reports-service:${VERSION:-latest}
+    container_name: supasoft-reports-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8088
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-replica:3306/supasoft_reports?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_REDIS_HOST: redis-primary
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-replica
+      - redis-primary
+      - discovery
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  notification-service:
+    image: ${DOCKER_REGISTRY}/supasoft/notification-service:${VERSION:-latest}
+    container_name: supasoft-notification-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8089
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_notifications?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      AT_USERNAME: ${AT_USERNAME}
+      AT_API_KEY: ${AT_API_KEY}
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - rabbitmq
+      - discovery
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  integration-service:
+    image: ${DOCKER_REGISTRY}/supasoft/integration-service:${VERSION:-latest}
+    container_name: supasoft-integration-service
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8090
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-primary:3306/supasoft_integrations?useSSL=true&serverTimezone=Africa/Nairobi
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery:8761/eureka/
+      MPESA_CONSUMER_KEY: ${MPESA_CONSUMER_KEY}
+      MPESA_CONSUMER_SECRET: ${MPESA_CONSUMER_SECRET}
+      ETIMS_API_KEY: ${ETIMS_API_KEY}
+      ETIMS_API_SECRET: ${ETIMS_API_SECRET}
+    networks:
+      - supasoft-backend
+    depends_on:
+      - mysql-primary
+      - rabbitmq
+      - discovery
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # ==========================================================================
+  # MONITORING - Prometheus
+  # ==========================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: supasoft-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - supasoft-backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ==========================================================================
+  # MONITORING - Grafana
+  # ==========================================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: supasoft-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - supasoft-backend
+    depends_on:
+      - prometheus
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  supasoft-backend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  supasoft-frontend:
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  mysql_primary_data:
+    driver: local
+  mysql_primary_logs:
+    driver: local
+  mysql_replica_data:
+    driver: local
+  redis_primary_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  rabbitmq_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
